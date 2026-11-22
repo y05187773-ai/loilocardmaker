@@ -9,12 +9,14 @@ const PF = {
   items: [], // { id, path, name, unit, child, bmp, thumb, date }
   units: [], // 単元の並び順
   roster: [], // { num, name, key }
+  pdfs: new Map(), // 読み込んだPDFごと（同じファイル名でも別あつかい）：key → { name, unit, absent: Set（休み・未提出の名前） }
   seq: 0,
 };
 const PF_PAPER = { a4p: [1240, 1754], a4l: [1754, 1240] }; // 150dpi 相当
 const PF_PT = { a4p: [595, 842], a4l: [842, 595] };
 const PF_UNSORTED = '（未分類）';
 const PF_NO_UNIT = '（単元名なし）';
+const PF_MAX_PER_CHILD = 8; // 1人あたりの上限（子ども別は1人1ページにまとめる）
 const PF_IMAGE_EXT = /\.(png|jpe?g|webp|gif|bmp)$/i;
 const PF_PDF_EXT = /\.pdf$/i;
 const PF_PDFJS = './vendor/pdfjs/';
@@ -55,6 +57,64 @@ function pfGuessChild(path, rule) {
     if (r.key.length >= 2 && p.includes(r.key) && (!best || r.key.length > best.key.length)) best = r;
   }
   return best ? best.name : '';
+}
+
+/* ---------- 名簿の順番での割り当て ---------- */
+const pfAbsentOf = (src) => PF.pdfs.get(src)?.absent || new Set();
+const pfOrderList = (src) => { const ab = pfAbsentOf(src); return PF.roster.filter((r) => !ab.has(r.name)); };
+
+/*
+ * 1つのPDFのページ（its：ページ順）に、名簿の順番で名前を入れる。
+ * 手で直したページ（manual）は動かさず、そこを起点に続きの人から割り当てる
+ * （＝1か所直すと、うしろのページが自動でずれる）。
+ * 手で「未分類」にしたページは、順番に数えない。
+ */
+function pfFillOrder(its, per) {
+  const list = pfOrderList(its[0]?.orderSrc);
+  let slot = 0, prev = null, run = 0;
+  for (const it of its) {
+    if (it.manual) {
+      const idx = list.findIndex((r) => r.name === it.child);
+      if (idx >= 0) {
+        run = prev === it.child ? run + 1 : 1;
+        slot = idx * per + Math.min(run, per);
+      }
+      prev = it.child;
+      continue;
+    }
+    const r = list[Math.floor(slot / per)];
+    it.child = r ? r.name : '';
+    it.byOrder = !!r;
+    run = prev === it.child ? run + 1 : 1;
+    prev = it.child;
+    slot++;
+  }
+}
+
+/* 名簿の順番で割り当てたPDFをすべて割り当て直す */
+function pfRefillOrder(per) {
+  for (const its of pfOrderGroups().values()) pfFillOrder(its, per);
+}
+function pfOrderGroups() {
+  const m = new Map();
+  for (const it of PF.items) {
+    if (!it.orderSrc) continue;
+    if (!m.has(it.orderSrc)) m.set(it.orderSrc, []);
+    m.get(it.orderSrc).push(it);
+  }
+  for (const its of m.values()) its.sort((a, b) => pfNatural(a.path, b.path));
+  return m;
+}
+
+/* 名簿の順番で割り当てたPDFの一覧：[{ src, name, unit, absent, pages, need }]（need：人数×1人あたりページ） */
+function pfOrderSummary(per) {
+  const out = [];
+  for (const [src, its] of pfOrderGroups()) {
+    const info = PF.pdfs.get(src) || {};
+    const pages = its.filter((it) => !(it.manual && !it.child)).length;
+    out.push({ src, name: info.name || src, unit: its[0]?.unit || '', absent: pfAbsentOf(src), pages, need: pfOrderList(src).length * per });
+  }
+  return out;
 }
 
 /* ---------- 画像の読み込み ---------- */
@@ -205,31 +265,24 @@ async function pfAddFiles(files, opt) {
       if (isPdf({ file, path })) {
         const pages = await pfReadPdf(file, (i, t) => opt.onProgress?.(`${n}/${list.length}件目のPDFを読み込み中… ${i}/${t}ページ`), { crop: opt.crop !== false });
         const unit = opt.unit.trim() || (opt.rule !== 'folder' && folder) || pfBaseName(path) || PF_NO_UNIT;
-        let children;
         const per = Math.max(1, opt.pdfPer || 1);
-        if (opt.rule !== 'roster') {
-          // 1人1つのPDF：ファイル名・フォルダ名を名前にする
-          const who = pfGuessChild(path, opt.rule);
-          children = pages.map(() => who);
-        } else {
-          // ファイル名・フォルダ名に名簿の名前があれば、PDF全体をその子にする
-          const who = pfGuessChild(path, 'roster');
-          if (who) {
-            children = pages.map(() => who);
-          } else {
-            // 名簿の順番：1人あたり per ページずつ割り当てる（あとで手で選ぶ：割り当てない）
-            const useOrder = PF.roster.length && opt.pdfRule !== 'none';
-            children = pages.map((_, i) => (useOrder ? PF.roster[Math.floor(i / per)]?.name || '' : ''));
-            res.pdfByOrder += children.filter(Boolean).length;
-          }
-        }
-        pages.forEach((pg, i) => {
+        // ファイル名・フォルダ名に名前があれば PDF 全体をその子に。なければ名簿の順番（またはあとで手で選ぶ）
+        const who = pfGuessChild(path, opt.rule);
+        const useOrder = opt.rule === 'roster' && !who && PF.roster.length && opt.pdfRule !== 'none';
+        const pdfKey = `pdf${++PF.seq}`;
+        PF.pdfs.set(pdfKey, { name: path.split('/').pop(), absent: new Set() });
+        const added = pages.map((pg, i) => {
           pfPushItem({
             path: `${path}#${String(i + 1).padStart(3, '0')}`, name: `${path.split('/').pop()}（${i + 1}ページ）`,
-            unit, child: children[i], byOrder: opt.rule === 'roster' && !!children[i] && !pfGuessChild(path, 'roster'), bmp: pg.bmp,
+            unit, child: useOrder ? '' : who, byOrder: false, pdfKey, pdfPath: path, orderSrc: useOrder ? pdfKey : null, bmp: pg.bmp,
             date: file.lastModified ? new Date(file.lastModified) : null,
           });
+          return PF.items[PF.items.length - 1];
         });
+        if (useOrder) {
+          pfFillOrder(added, per);
+          res.pdfByOrder += added.filter((it) => it.child).length;
+        }
         res.ok += pages.length;
         res.pdfPages += pages.length;
       } else {
@@ -275,8 +328,10 @@ async function pfFilesFromDrop(dt) {
 function pfRemoveItem(id) {
   const i = PF.items.findIndex((it) => it.id === id);
   if (i >= 0) {
+    const key = PF.items[i].pdfKey;
     PF.items[i].bmp.close?.();
     PF.items.splice(i, 1);
+    if (key && !PF.items.some((it) => it.pdfKey === key)) PF.pdfs.delete(key);
   }
   pfPruneUnits();
 }
@@ -284,6 +339,7 @@ function pfClear() {
   PF.items.forEach((it) => it.bmp.close?.());
   PF.items = [];
   PF.units = [];
+  PF.pdfs.clear();
 }
 function pfPruneUnits() {
   PF.units = PF.units.filter((u) => PF.items.some((it) => it.unit === u));
@@ -310,14 +366,33 @@ function pfKanten(o) {
   return labels.map((label) => ({ label, abbr: label.length <= 3 ? label : label[0] }));
 }
 
+/* 1人8枚をこえた画像の id（単元の順・ファイル順で9枚目以降）。未分類は数えない */
+function pfOverLimit() {
+  const unitIdx = (u) => PF.units.indexOf(u);
+  const by = new Map();
+  for (const it of PF.items) {
+    if (!it.child) continue;
+    if (!by.has(it.child)) by.set(it.child, []);
+    by.get(it.child).push(it);
+  }
+  const over = new Set();
+  for (const its of by.values()) {
+    its.sort((a, b) => unitIdx(a.unit) - unitIdx(b.unit) || pfNatural(a.path, b.path));
+    its.slice(PF_MAX_PER_CHILD).forEach((it) => over.add(it.id));
+  }
+  return over;
+}
+
 function pfBuildGroups(o) {
   const unitIdx = (u) => PF.units.indexOf(u);
+  const over = pfOverLimit();
+  const items = PF.items.filter((it) => !over.has(it.id));
   const children = pfChildOrder();
   const childIdx = (c) => children.indexOf(c);
   const groups = [];
   if (o.group === 'unit') {
     for (const u of PF.units) {
-      const its = PF.items.filter((it) => it.unit === u)
+      const its = items.filter((it) => it.unit === u)
         .sort((a, b) => childIdx(a.child) - childIdx(b.child) || pfNatural(a.path, b.path));
       if (!its.length) continue;
       const pages = [];
@@ -334,12 +409,23 @@ function pfBuildGroups(o) {
     }
   } else {
     for (const name of children) {
-      const its = PF.items.filter((it) => it.child === name)
+      const its = items.filter((it) => it.child === name)
         .sort((a, b) => unitIdx(a.unit) - unitIdx(b.unit) || pfNatural(a.path, b.path));
       if (!its.length) continue;
       const title = name || PF_UNSORTED;
       const r = PF.roster.find((x) => x.name === name);
       const pages = [];
+      if (name) {
+        // 1人1ページ：評価の表・所見メモ（小）・提出物（最大8枚）
+        const units = [];
+        for (const it of its) {
+          const u = units.find((x) => x.name === it.unit);
+          if (u) u.count++; else units.push({ name: it.unit, count: 1 });
+        }
+        pages.push({ kind: 'childOne', heading: title, units, items: its, caption: (it) => it.unit });
+        groups.push({ key: title, num: r?.num ?? null, pages });
+        continue;
+      }
       if (o.sheet) {
         const units = [];
         for (const it of its) {
@@ -534,19 +620,20 @@ function pfDrawTable(ctx, x, y, cols, rows, rowH, o, cellStyle) {
 }
 
 /* 罫線入りの記入欄 */
-function pfMemoBox(ctx, x, y, w, h, label) {
+function pfMemoBox(ctx, x, y, w, h, label, compact = false) {
   ctx.strokeStyle = PF_C.line;
   ctx.lineWidth = 2;
-  pfRoundRect(ctx, x, y, w, h, 14);
+  pfRoundRect(ctx, x, y, w, h, compact ? 10 : 14);
   ctx.stroke();
   ctx.fillStyle = PF_C.ink;
   ctx.textAlign = 'left';
-  ctx.font = pfFont(700, 24);
-  ctx.fillText(label, x + 20, y + 40);
+  ctx.font = pfFont(700, compact ? 20 : 24);
+  ctx.fillText(label, x + (compact ? 14 : 20), y + (compact ? 30 : 40));
   ctx.strokeStyle = PF_C.rule;
   ctx.lineWidth = 1.5;
   ctx.setLineDash([8, 7]);
-  for (let ly = y + 100; ly < y + h - 16; ly += 56) {
+  const first = compact ? 62 : 100, step = compact ? 40 : 56;
+  for (let ly = y + first; ly < y + h - 12; ly += step) {
     ctx.beginPath();
     ctx.moveTo(x + 20, ly);
     ctx.lineTo(x + w - 20, ly);
@@ -611,16 +698,111 @@ function pfDrawPage(ctx, p, W, H, o) {
     return;
   }
 
+  if (p.kind === 'childOne') {
+    pfDrawHeader(ctx, W, p.heading, o.sheet ? '評価シート' : '', o);
+    const avail = W - m * 2;
+    let y = m + 90;
+    if (o.sheet) {
+      const kw = Math.min(150, avail * 0.12);
+      const cntW = 70;
+      const unitW = Math.max(220, avail * 0.26);
+      const cols = [
+        { title: '単元', w: unitW },
+        { title: '枚数', w: cntW, align: 'center' },
+        ...kanten.map((k) => ({ title: k.label, w: kw, kanten: true })),
+        { title: 'メモ', w: avail - unitW - cntW - kw * kanten.length },
+      ];
+      const rowH = H > W ? 40 : 34;
+      y = pfDrawTable(ctx, m, y, cols, p.units.map((u) => [u.name, `${u.count}`, ...kanten.map(() => ''), '']), rowH, o) + 14;
+      const memoH = H > W ? 132 : 92;
+      pfMemoBox(ctx, m, y, avail, memoH, '所見メモ', true);
+      y += memoH + 20;
+    }
+    if (o.scores) y = pfDrawScores(ctx, m, y, avail, o) + 20;
+    pfDrawItems(ctx, p, m, y, avail, H - m - 24 - y, pfBestGrid(p.items, avail, H - m - 24 - y), o, kanten, true);
+    pfDrawFooter(ctx, W, H, p.label);
+    return;
+  }
+
   // 提出物のページ
   pfDrawHeader(ctx, W, p.heading, '', o);
   const top = m + 96, bottom = H - m - 24;
-  const [cols, rows] = pfGrid(o.perPage, H > W);
-  const gap = 30, capH = 42;
-  const memoH = o.memo ? 58 : 0;
-  const cw = (W - m * 2 - gap * (cols - 1)) / cols;
-  const ch = (bottom - top - gap * (rows - 1)) / rows;
+  pfDrawItems(ctx, p, m, top, W - m * 2, bottom - top, pfGrid(o.perPage, H > W), o, kanten, false);
+  pfDrawFooter(ctx, W, H, p.label);
+}
+
+/* ペーパーテストの点数欄（手書き用）。テスト名が空なら6回分の空欄 */
+function pfDrawScores(ctx, x, y, w, o) {
+  const names = String(o.scoreNames || '').split(/[,、，\n]/).map((s) => s.trim()).filter(Boolean).slice(0, 10);
+  const n = names.length || 6;
+  const labelW = 130;
+  const cw = (w - labelW) / n;
+  const h1 = 38, h2 = 56;
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = PF_C.ink;
+  ctx.textAlign = 'left';
+  ctx.font = pfFont(700, 20);
+  ctx.fillText('ペーパーテスト', x + 2, y + 14);
+  const top = y + 32;
+  ctx.fillStyle = PF_C.head;
+  ctx.fillRect(x, top, labelW, h1 + h2);
+  ctx.fillRect(x + labelW, top, w - labelW, h1);
+  ctx.fillStyle = PF_C.ink;
+  ctx.textAlign = 'center';
+  ctx.font = pfFont(700, 19);
+  ctx.fillText('テスト名', x + labelW / 2, top + h1 / 2);
+  ctx.fillText('点数', x + labelW / 2, top + h1 + h2 / 2);
+  for (let i = 0; i < n; i++) {
+    const cx = x + labelW + i * cw;
+    if (names[i]) {
+      ctx.fillStyle = PF_C.ink;
+      ctx.textAlign = 'center';
+      pfFitText(ctx, names[i], 700, 19, cw - 12, 10);
+      ctx.fillText(names[i], cx + cw / 2, top + h1 / 2);
+    }
+    ctx.fillStyle = PF_C.sub;
+    ctx.textAlign = 'right';
+    ctx.font = pfFont(400, 17);
+    ctx.fillText('点', cx + cw - 8, top + h1 + h2 - 14);
+  }
+  ctx.strokeStyle = PF_C.line;
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x, top, w, h1 + h2);
+  ctx.beginPath();
+  ctx.moveTo(x, top + h1);
+  ctx.lineTo(x + w, top + h1);
+  for (let i = 0; i < n; i++) {
+    ctx.moveTo(x + labelW + i * cw, top);
+    ctx.lineTo(x + labelW + i * cw, top + h1 + h2);
+  }
+  ctx.stroke();
+  ctx.textBaseline = 'alphabetic';
+  return top + h1 + h2;
+}
+
+/* 画像がいちばん大きく見える列数を選ぶ（枚数とカードの縦横から） */
+function pfBestGrid(items, w, h) {
+  const n = Math.max(1, items.length);
+  const ar = items.reduce((a, it) => a + it.bmp.width / it.bmp.height, 0) / n || 1.4;
+  let best = [1, n], bestS = -1;
+  for (let c = 1; c <= Math.min(4, n); c++) {
+    const r = Math.ceil(n / c);
+    const cw = (w - 20 * (c - 1)) / c;
+    const ih = (h - 20 * (r - 1)) / r - 34 - 48;
+    const s = Math.min(cw / ar, ih);
+    if (s > bestS) { bestS = s; best = [c, r]; }
+  }
+  return best;
+}
+
+function pfDrawItems(ctx, p, x0, top, aw, ah, [cols, rows], o, kanten, compact) {
+  const gap = compact ? 20 : 30, capH = compact ? 34 : 42;
+  const memoH = o.memo ? (compact ? 48 : 58) : 0;
+  const capSize = compact ? 20 : 24;
+  const cw = (aw - gap * (cols - 1)) / cols;
+  const ch = (ah - gap * (rows - 1)) / rows;
   p.items.forEach((it, i) => {
-    const cx = m + (i % cols) * (cw + gap);
+    const cx = x0 + (i % cols) * (cw + gap);
     const cy = top + Math.floor(i / cols) * (ch + gap);
     const ih = ch - capH - memoH;
     const sc = Math.min(cw / it.bmp.width, ih / it.bmp.height);
@@ -633,12 +815,11 @@ function pfDrawPage(ctx, p, W, H, o) {
     const cap = [p.caption(it), o.showDate ? pfDateText(it.date) : ''].filter(Boolean).join('　');
     ctx.textAlign = 'center';
     ctx.fillStyle = PF_C.ink;
-    pfFitText(ctx, cap, 700, 24, cw - 10);
-    const capY = cy + ih + 32;
+    pfFitText(ctx, cap, 700, capSize, cw - 10);
+    const capY = cy + ih + capH - 10;
     ctx.fillText(cap, cx + cw / 2, capY);
-    if (o.memo) pfDrawItemMemo(ctx, cx, capY + 12, cw, memoH - 10, kanten, o);
+    if (o.memo) pfDrawItemMemo(ctx, cx, capY + 10, cw, memoH - 10, kanten, o);
   });
-  pfDrawFooter(ctx, W, H, p.label);
 }
 
 /* 画像の下の評価メモ欄：［知 A B C］［思 A B C］…　メモ＿＿＿ */

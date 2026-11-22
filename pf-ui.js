@@ -15,9 +15,10 @@ async function pfHandleFiles(files) {
     pdfRule: st.portfolio.pdfRule, pdfPer: st.portfolio.pdfPer, crop: st.portfolio.pdfCrop !== false, onProgress: pfSetStatus,
   });
   const unmatched = PF.items.filter((it) => !it.child).length;
+  const overN = pfOverLimit().size;
   const pdfNote = !r.pdfPages ? ''
     : st.portfolio.nameRule !== 'roster' ? `PDF ${r.pdfPages}ページは、ファイル名・フォルダ名の人に割り当てました。`
-    : r.pdfByOrder ? `PDFのページを名簿の順に割り当てました（${r.pdfByOrder}ページ。ずれていないか5の表で確かめてください）。`
+    : r.pdfByOrder ? `PDFのページを名簿の順に割り当てました（${r.pdfByOrder}ページ）。ずれていたら、5の表でずれ始めたページの名前を直すと、うしろも自動でずれます。`
     : !PF.roster.length && st.portfolio.pdfRule !== 'none' ? `PDF ${r.pdfPages}ページを読み込みました。名簿を入れて「名前を振り直す」と、名簿の順に割り当てられます。`
     : `PDF ${r.pdfPages}ページを読み込みました。`;
   pfSetStatus([
@@ -26,6 +27,7 @@ async function pfHandleFiles(files) {
     r.ng ? `${r.ng}件は読み込めませんでした。` : '',
     r.skipped ? `画像・PDF以外の${r.skipped}件は読み飛ばしました。` : '',
     unmatched ? `名前が決まっていない画像が${unmatched}枚あります（5の表で選べます）。` : '',
+    overN ? `1人${PF_MAX_PER_CHILD}枚をこえた${overN}枚は、PDFに入りません（5の表で確かめてください）。` : '',
   ].join(''));
   $('pfUnit').value = '';
   pfUiUpdate();
@@ -56,16 +58,50 @@ function pfRenderTable() {
     return;
   }
   const children = pfChildOptions();
+
   const order = (it) => PF.units.indexOf(it.unit);
   const rows = [...PF.items].sort((a, b) => order(a) - order(b) || pfNatural(a.path, b.path));
+  const over = pfOverLimit();
+  $('pfOverWarn').hidden = !over.size;
+  if (over.size) {
+    const who = [...new Set(PF.items.filter((it) => over.has(it.id)).map((it) => it.child))];
+    $('pfOverWarn').innerHTML = `1人${PF_MAX_PER_CHILD}枚までです。<b>${who.map(pfEsc).join('、')}</b> の${over.size}枚は${PF_MAX_PER_CHILD}枚をこえているので、PDFに入りません（名前を直すか、✕で消してください）。`;
+  }
   tbl.innerHTML = '<tr><th></th><th>単元</th><th>名前</th><th>ファイル</th><th></th></tr>' + rows.map((it) => {
     const opts = [`<option value="">${PF_UNSORTED}</option>`, ...children.map((c) => `<option ${c === it.child ? 'selected' : ''}>${pfEsc(c)}</option>`)].join('');
-    return `<tr data-id="${it.id}"><td><img src="${it.thumb}" alt=""></td>`
+    const note = it.orderSrc && it.manual ? '<span class="order-note fixed">手で直した</span>'
+      : it.byOrder && it.child ? '<span class="order-note">名簿の順で割り当て</span>' : '';
+    return `<tr data-id="${it.id}" class="${over.has(it.id) ? 'over' : ''}"><td><button type="button" class="thumb" aria-label="大きく見る"><img src="${it.thumb}" alt=""></button></td>`
       + `<td><input type="text" list="pfUnitList" data-f="unit" value="${pfEsc(it.unit)}"></td>`
-      + `<td class="${it.child ? '' : 'nomatch'}"><select data-f="child">${opts}</select>${it.byOrder && it.child ? '<span class="order-note">名簿の順で割り当て</span>' : ''}</td>`
+      + `<td class="${it.child ? '' : 'nomatch'}"><select data-f="child">${opts}</select>${over.has(it.id) ? `<span class="order-note over">${PF_MAX_PER_CHILD}枚をこえています</span>` : note}</td>`
       + `<td class="fname">${pfEsc(it.path)}</td><td><button type="button" class="del" aria-label="削除">✕</button></td></tr>`;
   }).join('');
 }
+
+/* 提出物（PDF）ごとの休み・未提出 */
+function pfRenderAbsent() {
+  const per = pfPer();
+  const list = pfOrderSummary(per);
+  const sec = $('pfAbsentSec');
+  sec.hidden = !list.length;
+  if (!list.length) return;
+  $('pfAbsentList').innerHTML = list.map((m) => {
+    for (const n of [...m.absent]) if (!PF.roster.some((r) => r.name === n)) m.absent.delete(n);
+    const chips = PF.roster.map((r) => {
+      const on = m.absent.has(r.name);
+      return `<button type="button" class="chip ${on ? 'on' : ''}" data-name="${pfEsc(r.name)}" aria-pressed="${on}">${r.num != null ? `<small>${r.num}</small>` : ''}${pfEsc(r.name)}</button>`;
+    }).join('');
+    const diff = m.need - m.pages;
+    const state = !diff ? `<span class="ok">✓ ${m.pages}ページ・${m.need / per}人分　ぴったりです</span>`
+      : diff > 0 ? `<span class="ng">${m.pages}ページですが、名簿の順番では${m.need}ページ（${m.need / per}人）分です。あと${diff / per}人、休み・未提出の子を選んでください（または、ずれ始めたページの名前を5の表で直してください）。</span>`
+      : `<span class="ng">${m.pages}ページあり、名簿の順番の${m.need}ページより多いです。選びすぎていないか、5の表で確かめてください。</span>`;
+    return `<div class="pf-absent-item" data-src="${pfEsc(m.src)}">`
+      + `<div class="pf-absent-head"><b>${pfEsc(m.unit)}</b><span class="fname">${pfEsc(m.name)}</span>`
+      + `<span class="count-note">休み・未提出 ${m.absent.size}人</span>${m.absent.size ? '<button type="button" class="link-btn" data-clear>すべて外す</button>' : ''}</div>`
+      + `<div class="chips">${chips}</div><p class="pf-absent-state">${state}</p></div>`;
+  }).join('');
+}
+const pfPer = () => Math.max(1, st.portfolio.pdfPer || 1);
 
 function pfRenderPreview() {
   clearTimeout(pfPreviewTimer);
@@ -93,11 +129,44 @@ function pfRenderPreview() {
 }
 
 function pfUiUpdate() {
+  pfRenderAbsent();
   pfRenderUnits();
   pfRenderTable();
   pfRenderPreview();
   $('pfZip').hidden = st.portfolio.group !== 'child';
+  $('pfPer').closest('.field').hidden = st.portfolio.group === 'child';
   $('pageStyle').textContent = `@page { size: A4 ${st.portfolio.paper === 'a4l' ? 'landscape' : 'portrait'}; margin: 0; }`;
+}
+
+/* 拡大表示 */
+let pfZoomId = null;
+function pfZoomRows() {
+  return [...$('pfTable').querySelectorAll('tr[data-id]')].map((tr) => Number(tr.dataset.id));
+}
+function pfZoom(id) {
+  const it = PF.items.find((x) => x.id === id);
+  if (!it) return;
+  pfZoomId = id;
+  const cv = $('pfZoomCanvas');
+  cv.width = it.bmp.width;
+  cv.height = it.bmp.height;
+  cv.getContext('2d').drawImage(it.bmp, 0, 0);
+  const ids = pfZoomRows();
+  const i = ids.indexOf(id);
+  const opts = [`<option value="">${PF_UNSORTED}</option>`, ...pfChildOptions().map((c) => `<option ${c === it.child ? 'selected' : ''}>${pfEsc(c)}</option>`)].join('');
+  $('pfZoomInfo').innerHTML = `<span>${i + 1} / ${ids.length}　${pfEsc(it.name)}</span><label>名前 <select>${opts}</select></label>`;
+  $('pfZoomPrev').disabled = i <= 0;
+  $('pfZoomNext').disabled = i >= ids.length - 1;
+  $('pfZoom').hidden = false;
+}
+function pfZoomStep(d) {
+  const ids = pfZoomRows();
+  const j = ids.indexOf(pfZoomId) + d;
+  if (j >= 0 && j < ids.length) pfZoom(ids[j]);
+}
+function pfZoomClose() {
+  $('pfZoom').hidden = true;
+  pfZoomId = null;
 }
 
 function pfFileBase() {
@@ -110,28 +179,31 @@ function pfReassignAll() {
   const per = Math.max(1, st.portfolio.pdfPer || 1);
   const pdfs = new Map();
   for (const it of PF.items) {
-    const m = it.path.match(/^(.*\.pdf)#(\d+)$/i);
-    if (m) {
-      if (!pdfs.has(m[1])) pdfs.set(m[1], []);
-      pdfs.get(m[1]).push(it);
+    if (it.pdfKey) {
+      if (!pdfs.has(it.pdfKey)) pdfs.set(it.pdfKey, []);
+      pdfs.get(it.pdfKey).push(it);
       continue;
     }
     it.child = pfGuessChild(it.path, rule);
   }
-  for (const [path, its] of pdfs) {
+  for (const [key, its] of pdfs) {
+    const path = its[0].pdfPath || its[0].path.replace(/#\d+$/, '');
     its.sort((a, b) => pfNatural(a.path, b.path));
     if (rule !== 'roster') {
       const who = pfGuessChild(path, rule);
-      its.forEach((it) => { it.child = who; });
+      its.forEach((it) => { it.child = who; it.manual = false; it.byOrder = false; it.orderSrc = null; });
       continue;
     }
     // ファイル名・フォルダ名に名簿の名前があれば PDF 全体をその子に、なければ名簿の順番（または未分類）
     const who = pfGuessChild(path, 'roster');
     const useOrder = !who && PF.roster.length && st.portfolio.pdfRule !== 'none';
-    its.forEach((it, i) => {
-      it.child = who || (useOrder ? PF.roster[Math.floor(i / per)]?.name || '' : '');
-      it.byOrder = useOrder && !!it.child;
+    its.forEach((it) => {
+      it.manual = false;
+      it.byOrder = false;
+      it.orderSrc = useOrder ? key : null;
+      it.child = useOrder ? '' : who;
     });
+    if (useOrder) pfFillOrder(its, per);
   }
 }
 
@@ -140,7 +212,8 @@ function pfUiInit() {
   $('pfRoster').addEventListener('input', (e) => {
     PF.roster = pfParseRoster(e.target.value);
     if (st.portfolio.nameRule === 'roster') {
-      PF.items.forEach((it) => { if (!it.child) it.child = pfGuessChild(it.path, 'roster'); });
+      PF.items.forEach((it) => { if (!it.child && !it.orderSrc) it.child = pfGuessChild(it.path, 'roster'); });
+      pfRefillOrder(Math.max(1, st.portfolio.pdfPer || 1));
     }
     clearTimeout(rosterTimer);
     rosterTimer = setTimeout(pfUiUpdate, 300);
@@ -202,20 +275,74 @@ function pfUiInit() {
     if (!tr) return;
     const it = PF.items.find((x) => x.id === Number(tr.dataset.id));
     if (!it) return;
-    if (e.target.dataset.f === 'child') it.byOrder = false;
     if (e.target.dataset.f === 'unit') {
       it.unit = e.target.value.trim() || PF_NO_UNIT;
       if (!PF.units.includes(it.unit)) PF.units.push(it.unit);
       pfPruneUnits();
     } else if (e.target.dataset.f === 'child') {
       it.child = e.target.value;
+      it.byOrder = false;
+      if (it.orderSrc) {
+        // 名簿の順番で割り当てたPDF：ここを起点に、うしろのページを続きの人からずらす
+        it.manual = true;
+        if (pfAbsentOf(it.orderSrc).delete(it.child)) toast(`この提出物の「休み・未提出」から${it.child}さんを外しました`);
+        const before = new Map(PF.items.map((x) => [x.id, x.child]));
+        pfRefillOrder(Math.max(1, st.portfolio.pdfPer || 1));
+        const moved = PF.items.filter((x) => x.id !== it.id && before.get(x.id) !== x.child).length;
+        if (moved) toast(`うしろの${moved}ページも順にずらしました`);
+      }
     }
     pfUiUpdate();
   });
   $('pfTable').addEventListener('click', (e) => {
+    const tr = e.target.closest('tr[data-id]');
+    if (!tr) return;
+    if (e.target.closest('.thumb')) {
+      pfZoom(Number(tr.dataset.id));
+      return;
+    }
     if (!e.target.closest('.del')) return;
-    pfRemoveItem(Number(e.target.closest('tr').dataset.id));
+    const it = PF.items.find((x) => x.id === Number(tr.dataset.id));
+    pfRemoveItem(Number(tr.dataset.id));
+    if (it?.orderSrc) pfRefillOrder(Math.max(1, st.portfolio.pdfPer || 1));
     pfUiUpdate();
+  });
+
+  // 提出物ごとの休み・未提出
+  $('pfAbsentList').addEventListener('click', (e) => {
+    const box = e.target.closest('.pf-absent-item');
+    if (!box) return;
+    const ab = pfAbsentOf(box.dataset.src);
+    const b = e.target.closest('.chip');
+    if (b) {
+      const n = b.dataset.name;
+      if (ab.has(n)) ab.delete(n); else ab.add(n);
+    } else if (e.target.closest('[data-clear]')) {
+      ab.clear();
+    } else return;
+    pfRefillOrder(pfPer());
+    pfUiUpdate();
+  });
+
+  // 拡大表示（前後のページへ ← →、閉じる Esc）
+  const zoom = $('pfZoom');
+  zoom.addEventListener('click', (e) => {
+    if (e.target.closest('[data-zoom]')) pfZoomStep(Number(e.target.closest('[data-zoom]').dataset.zoom));
+    else if (e.target === zoom || e.target.closest('.zoom-close')) pfZoomClose();
+  });
+  zoom.addEventListener('change', (e) => {
+    if (e.target.tagName !== 'SELECT') return;
+    const row = $('pfTable').querySelector(`tr[data-id="${pfZoomId}"] select[data-f="child"]`);
+    if (!row) return;
+    row.value = e.target.value;
+    row.dispatchEvent(new Event('change', { bubbles: true }));
+    pfZoom(pfZoomId);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (zoom.hidden || e.target.tagName === 'SELECT') return;
+    if (e.key === 'Escape') pfZoomClose();
+    else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); pfZoomStep(1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); pfZoomStep(-1); }
   });
 
   // 書き出し

@@ -352,6 +352,12 @@
         </div>
       </section>
 
+      <section class="block pf-absent" data-for="portfolio" id="pfAbsentSec" hidden>
+        <h2><span class="num">2+</span>提出物ごとの休み・未提出</h2>
+        <p class="help">名簿の順番で割り当てたPDFごとに、その日に休んだ子や出していない子を押してください。押した子を飛ばして、すぐに割り当て直します。単元別の評価一覧では、その子が「未提出」と表示されます。</p>
+        <div id="pfAbsentList"></div>
+      </section>
+
       <section class="block" data-for="portfolio">
         <h2><span class="num">3</span>まとめ方</h2>
         <div class="field">
@@ -360,6 +366,7 @@
             <button type="button" data-v="child">子ども別</button>
             <button type="button" data-v="unit">単元別</button>
           </div>
+          <p class="help">子ども別：1人1ページ（評価の表・所見メモ・提出物 最大8枚）にまとめます。</p>
         </div>
         <div class="row-2">
           <div class="field">
@@ -390,8 +397,13 @@
           <label for="pfKanten">評価の観点（「,」か「、」で区切る）</label>
           <input id="pfKanten" type="text" data-bind="portfolio.kanten" placeholder="知識・技能,思考・判断・表現,主体的に学習に取り組む態度">
         </div>
+        <div class="field">
+          <label for="pfScoreNames">ペーパーテストの名前（「,」か「、」で区切る・10回まで）</label>
+          <input id="pfScoreNames" type="text" data-bind="portfolio.scoreNames" placeholder="空欄なら、6回分の空いた欄（テスト名も手書き）">
+        </div>
         <div class="checks checks-col">
-          <label><input type="checkbox" data-bind="portfolio.sheet"> 評価の表をつける<small>子ども別：単元×観点の評価シート／単元別：名簿×観点の評価一覧（未提出がわかる）</small></label>
+          <label><input type="checkbox" data-bind="portfolio.sheet"> 評価の表をつける<small>子ども別：単元×観点の評価シートと所見メモ／単元別：名簿×観点の評価一覧（未提出がわかる）</small></label>
+          <label><input type="checkbox" data-bind="portfolio.scores"> ペーパーテストの点数欄（手書き用）<small>子ども別の1ページに入ります</small></label>
           <label><input type="checkbox" data-bind="portfolio.memo"> 提出物ごとに評価メモ欄</label>
           <label><input type="checkbox" data-bind="portfolio.abc"> 記入欄に「A B C」を印刷（丸をつける用）</label>
           <label><input type="checkbox" data-bind="portfolio.confidential"> 「取扱注意」を表示</label>
@@ -406,7 +418,8 @@
 
       <section class="block" data-for="portfolio">
         <h2><span class="num">5</span>読み込んだ画像<span class="count-note" id="pfItemCount"></span></h2>
-        <p class="help">単元や名前がちがうときは、ここで直せます。</p>
+        <p class="help">単元や名前がちがうときは、ここで直せます。名簿の順番で割り当てたPDFは、<b>ずれ始めたページの名前を直すと、うしろのページも自動で1人ずつずれます</b>（手で直したページは動きません）。画像を押すと大きく見られます。</p>
+        <p id="pfOverWarn" class="pf-warn" hidden></p>
         <div class="table-wrap pf-table-wrap"><table id="pfTable"></table></div>
         <datalist id="pfUnitList"></datalist>
       </section>
@@ -499,6 +512,17 @@
   </main>
 
   <div id="pfPrintArea" class="pf-print-area"></div>
+  <div id="pfZoom" class="pf-zoom" hidden>
+    <div class="pf-zoom-box">
+      <canvas id="pfZoomCanvas"></canvas>
+      <div class="pf-zoom-bar">
+        <button type="button" class="btn small" id="pfZoomPrev" data-zoom="-1">← 前</button>
+        <div id="pfZoomInfo" class="pf-zoom-info"></div>
+        <button type="button" class="btn small" id="pfZoomNext" data-zoom="1">次 →</button>
+        <button type="button" class="btn small ghost zoom-close">閉じる</button>
+      </div>
+    </div>
+  </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script src="tools.js"></script>

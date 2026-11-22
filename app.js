@@ -9,7 +9,7 @@ const DEFAULTS = {
   survey: { title: '', text: '', scale: 'four', perPage: 3, comment: false, commentText: '感想や、次にがんばりたいことを書きましょう', required: true },
   test: { title: '', text: '', perPage: 1, marks: 'kana', answerKey: true, showScore: false, points: 1, required: true },
   aspect: '16:9', theme: 'color', size: 'm', showName: false, showDate: false, ruled: false,
-  portfolio: { nameRule: 'roster', pdfRule: 'order', pdfPer: 1, pdfCrop: true, group: 'child', paper: 'a4p', perPage: 2, title: '学習評価資料', klass: '', sheet: true, memo: true, abc: true, confidential: true, showDate: false, kanten: '知識・技能,思考・判断・表現,主体的に学習に取り組む態度' },
+  portfolio: { nameRule: 'roster', pdfRule: 'order', pdfPer: 1, pdfCrop: true, group: 'child', paper: 'a4p', perPage: 2, title: '学習評価資料', klass: '', sheet: true, memo: true, abc: true, confidential: true, showDate: false, scores: true, scoreNames: '', kanten: '知識・技能,思考・判断・表現,主体的に学習に取り組む態度' },
   ai: {
     test: { goal: 'create', grade: '3', subject: '算数', unit: '', count: 5, level: 'normal', type: 'mix', explain: true, extra: '' },
     survey: { goal: 'create', grade: '3', subject: '国語', purpose: '', count: 3, free: 1, extra: '' },
