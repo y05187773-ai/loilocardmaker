@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ロイロ カードメーカー</title>
+  <link rel="stylesheet" href="style.css">
+  <style id="pageStyle"></style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">◎</span>
+      <div>
+        <h1>ロイロ カードメーカー</h1>
+        <p>ロイロノートに取り込めるカードをかんたんにつくる</p>
+      </div>
+    </div>
+    <nav class="modes" role="tablist" aria-label="つくるカード">
+      <button type="button" role="tab" data-mode="thinking">シンキングツール</button>
+      <button type="button" role="tab" data-mode="survey">アンケート</button>
+      <button type="button" role="tab" data-mode="test">テスト</button>
+      <button type="button" role="tab" data-mode="portfolio">ポートフォリオ</button>
+    </nav>
+  </header>
+
+  <main class="layout">
+    <aside class="panel">
+      <!-- シンキングツール -->
+      <section class="block" data-for="thinking">
+        <h2><span class="num">1</span>ツールをえらぶ<span class="count-note" id="toolCount"></span></h2>
+        <div id="toolGrid" class="tool-grid" role="radiogroup" aria-label="シンキングツール"></div>
+      </section>
+
+      <section class="block" data-for="thinking">
+        <h2><span class="num">2</span>問いとラベル</h2>
+        <div class="field">
+          <label for="titleInput">問い・タイトル</label>
+          <div class="title-row">
+            <select id="tagSelect" aria-label="見出し">
+              <option value="">見出しなし</option>
+              <option>問い</option>
+              <option>めあて</option>
+              <option>テーマ</option>
+              <option>課題</option>
+            </select>
+            <input id="titleInput" type="text" placeholder="例：ごんの気持ちはどう変わったのだろう">
+          </div>
+        </div>
+        <div class="field" id="countField" hidden>
+          <label for="countSelect" id="countLabel">数</label>
+          <select id="countSelect"></select>
+        </div>
+        <div id="labelFields" class="label-fields"></div>
+        <button type="button" id="resetLabels" class="link-btn">ラベルを初期値にもどす</button>
+      </section>
+
+      <!-- アンケート -->
+      <section class="block" data-for="survey">
+        <h2><span class="num">1</span>質問を入力</h2>
+        <div class="field">
+          <label for="surveyTitle">タイトル</label>
+          <input id="surveyTitle" type="text" data-bind="survey.title" placeholder="例：今日の学習のふり返り">
+        </div>
+        <div class="field">
+          <label for="surveyText">質問（1行に1問）</label>
+          <textarea id="surveyText" data-bind="survey.text" rows="7" placeholder="めあてを達成できましたか&#10;友だちと協力できましたか"></textarea>
+          <p class="help">行の頭に「<b>自由：</b>」をつけると、書いて答える質問になります。</p>
+        </div>
+        <div class="field">
+          <span class="field-label">答え方</span>
+          <div class="seg seg-wrap" data-key="survey.scale" id="scaleSeg"></div>
+          <p class="help" id="scalePreview"></p>
+        </div>
+        <div class="field">
+          <label class="inline-check"><input type="checkbox" data-bind="survey.comment"> 最後に感想欄をつける</label>
+          <input type="text" data-bind="survey.commentText" placeholder="例：感想や、次にがんばりたいことを書きましょう">
+        </div>
+        <div class="row-2">
+          <div class="field">
+            <label for="surveyPer">1枚にのせる数</label>
+            <select id="surveyPer" data-bind="survey.perPage" data-num>
+              <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option>
+            </select>
+          </div>
+          <div class="field end">
+            <button type="button" class="link-btn" data-sample="survey">入力例を入れる</button>
+          </div>
+        </div>
+      </section>
+
+
+      <section class="block ai-block" data-for="survey">
+        <h2><span class="num">AI</span>アンケートの質問をAIに相談する</h2>
+        <div class="field">
+          <span class="field-label">相談すること</span>
+          <div class="seg" data-key="ai.survey.goal">
+            <button type="button" data-v="create">新しく作ってもらう</button>
+            <button type="button" data-v="review">今の質問を見直してもらう</button>
+          </div>
+        </div>
+        <div class="row-2">
+          <div class="field">
+            <label for="ai-survey-grade">学年</label>
+            <select id="ai-survey-grade" data-bind="ai.survey.grade">
+              <option value="1">1年</option><option value="2">2年</option><option value="3">3年</option><option value="4">4年</option><option value="5">5年</option><option value="6">6年</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ai-survey-subject">教科</label>
+            <select id="ai-survey-subject" data-bind="ai.survey.subject" data-subjects></select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="aiSurveyPurpose">アンケートの目的</label>
+          <input id="aiSurveyPurpose" type="text" data-bind="ai.survey.purpose" placeholder="例：話し合い活動のふり返り">
+        </div>
+        <div class="row-2" data-ai-create>
+          <div class="field">
+            <label for="aiSurveyCount">選択式の質問数</label>
+            <select id="aiSurveyCount" data-bind="ai.survey.count" data-num>
+              <option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>8</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="aiSurveyFree">書いて答える質問数</label>
+            <select id="aiSurveyFree" data-bind="ai.survey.free" data-num>
+              <option>0</option><option>1</option><option>2</option><option>3</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="ai-survey-extra">そのほかの希望（なくてもOK）</label>
+          <input id="ai-survey-extra" type="text" data-bind="ai.survey.extra" placeholder="例：生活の場面に結びつけた問題にしてほしい">
+        </div>
+        <details class="prompt-box">
+          <summary>できたプロンプトを見る</summary>
+          <textarea id="aiPrompt-survey" rows="10" readonly></textarea>
+        </details>
+        <div class="ai-actions">
+          <a class="btn ai-btn copilot" data-ai-open="copilot" data-kind="survey" href="https://copilot.microsoft.com/" target="_blank" rel="noopener">コピーして Copilot を開く</a>
+          <a class="btn ai-btn gemini" data-ai-open="gemini" data-kind="survey" href="https://gemini.google.com/app" target="_blank" rel="noopener">コピーして Gemini を開く</a>
+          <button type="button" class="link-btn" data-ai-copy="survey">プロンプトをコピーだけする</button>
+        </div>
+        <p class="help">AIの画面で貼り付け（Ctrl+V / ⌘+V）して送信します。子どもの名前など個人情報は入れないでください。AIの答えには誤りがあることがあるので、必ず確かめてから使いましょう。</p>
+        <div class="field paste-field">
+          <label for="aiPaste-survey">AIの回答を貼り付けて取り込む</label>
+          <textarea id="aiPaste-survey" rows="4" placeholder="AIの回答をまるごと貼り付けてOK（前置きや説明は自動で取りのぞきます）"></textarea>
+          <div class="paste-actions">
+            <button type="button" class="btn small" data-ai-import="survey" data-how="replace">アンケートの欄を置きかえる</button>
+            <button type="button" class="btn small ghost" data-ai-import="survey" data-how="append">後ろに追加する</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="block loilo-block" data-for="survey">
+        <h2><span class="num">L</span>ロイロのアンケートカードに取り込む</h2>
+        <p class="help">ロイロノートのアンケートカードで「インポート」すると、質問がまとめて作られ、回答を集計できます。選択肢は上の「答え方」が使われます。</p>
+        <label class="inline-check"><input type="checkbox" data-bind="survey.required"> 回答を必須にする</label>
+        <button type="button" class="btn loilo wide-btn" data-loilo="survey">取り込み用Excelを保存（.xlsx）</button>
+        <details class="loilo-preview" open>
+          <summary>取り込まれる内容を確認</summary>
+          <div class="table-wrap"><table id="loiloTableSurvey"></table></div>
+        </details>
+      </section>
+
+      <!-- テスト -->
+      <section class="block" data-for="test">
+        <h2><span class="num">1</span>問題を入力</h2>
+        <div class="field">
+          <label for="testTitle">タイトル</label>
+          <input id="testTitle" type="text" data-bind="test.title" placeholder="例：かけ算 たしかめテスト">
+        </div>
+        <div class="field">
+          <label for="testText">問題（1行に1問）</label>
+          <textarea id="testText" data-bind="test.text" rows="8" placeholder="7×8は？｜答：56&#10;日本の首都は？｜*東京｜大阪｜京都"></textarea>
+          <div class="help">
+            <p>書き方</p>
+            <ul>
+              <li><b>書いて答える</b>：<code>7×8は？</code>（正答は <code>｜答：56</code> と書く）</li>
+              <li><b>選んで答える</b>：<code>首都は？｜*東京｜大阪｜京都</code>（正答の頭に <code>*</code>。複数あれば複数に）</li>
+              <li><b>そのほか</b>：<code>｜解説：〇〇</code>、<code>｜配点：5</code>、別解は <code>答：56／五十六</code></li>
+            </ul>
+          </div>
+        </div>
+        <div class="row-2">
+          <div class="field">
+            <label for="testPer">1枚にのせる数</label>
+            <select id="testPer" data-bind="test.perPage" data-num>
+              <option value="1">1（1問1枚）</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>8</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="testMarks">選択肢の記号</label>
+            <select id="testMarks" data-bind="test.marks">
+              <option value="kana">ア・イ・ウ</option>
+              <option value="alpha">A・B・C</option>
+              <option value="num">1・2・3</option>
+            </select>
+          </div>
+        </div>
+        <div class="checks">
+          <label><input type="checkbox" data-bind="test.answerKey"> 解答カードもつくる</label>
+          <label><input type="checkbox" data-bind="test.showScore"> 点数の欄</label>
+        </div>
+        <button type="button" class="link-btn" data-sample="test">入力例を入れる</button>
+      </section>
+
+
+      <section class="block ai-block" data-for="test">
+        <h2><span class="num">AI</span>テストの問題をAIに相談する</h2>
+        <div class="field">
+          <span class="field-label">相談すること</span>
+          <div class="seg" data-key="ai.test.goal">
+            <button type="button" data-v="create">新しく作ってもらう</button>
+            <button type="button" data-v="review">今の問題を見直してもらう</button>
+          </div>
+        </div>
+        <div class="row-2">
+          <div class="field">
+            <label for="ai-test-grade">学年</label>
+            <select id="ai-test-grade" data-bind="ai.test.grade">
+              <option value="1">1年</option><option value="2">2年</option><option value="3">3年</option><option value="4">4年</option><option value="5">5年</option><option value="6">6年</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ai-test-subject">教科</label>
+            <select id="ai-test-subject" data-bind="ai.test.subject" data-subjects></select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="aiTestUnit">単元・内容</label>
+          <input id="aiTestUnit" type="text" data-bind="ai.test.unit" placeholder="例：かけ算九九（7・8・9の段）">
+        </div>
+        <div class="row-2" data-ai-create>
+          <div class="field">
+            <label for="aiTestCount">問題数</label>
+            <select id="aiTestCount" data-bind="ai.test.count" data-num>
+              <option>3</option><option>5</option><option>8</option><option>10</option><option>15</option><option>20</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="aiTestLevel">難しさ</label>
+            <select id="aiTestLevel" data-bind="ai.test.level">
+              <option value="easy">やさしめ</option><option value="normal">ふつう</option><option value="hard">むずかしめ</option>
+            </select>
+          </div>
+        </div>
+        <div class="field" data-ai-create>
+          <span class="field-label">問題の形式</span>
+          <div class="seg" data-key="ai.test.type">
+            <button type="button" data-v="mix">まぜる</button>
+            <button type="button" data-v="choice">選んで答える</button>
+            <button type="button" data-v="write">書いて答える</button>
+          </div>
+        </div>
+        <label class="inline-check"><input type="checkbox" data-bind="ai.test.explain"> 解説もつけてもらう</label>
+        <div class="field">
+          <label for="ai-test-extra">そのほかの希望（なくてもOK）</label>
+          <input id="ai-test-extra" type="text" data-bind="ai.test.extra" placeholder="例：生活の場面に結びつけた問題にしてほしい">
+        </div>
+        <details class="prompt-box">
+          <summary>できたプロンプトを見る</summary>
+          <textarea id="aiPrompt-test" rows="10" readonly></textarea>
+        </details>
+        <div class="ai-actions">
+          <a class="btn ai-btn copilot" data-ai-open="copilot" data-kind="test" href="https://copilot.microsoft.com/" target="_blank" rel="noopener">コピーして Copilot を開く</a>
+          <a class="btn ai-btn gemini" data-ai-open="gemini" data-kind="test" href="https://gemini.google.com/app" target="_blank" rel="noopener">コピーして Gemini を開く</a>
+          <button type="button" class="link-btn" data-ai-copy="test">プロンプトをコピーだけする</button>
+        </div>
+        <p class="help">AIの画面で貼り付け（Ctrl+V / ⌘+V）して送信します。子どもの名前など個人情報は入れないでください。AIの答えには誤りがあることがあるので、必ず確かめてから使いましょう。</p>
+        <div class="field paste-field">
+          <label for="aiPaste-test">AIの回答を貼り付けて取り込む</label>
+          <textarea id="aiPaste-test" rows="4" placeholder="AIの回答をまるごと貼り付けてOK（前置きや説明は自動で取りのぞきます）"></textarea>
+          <div class="paste-actions">
+            <button type="button" class="btn small" data-ai-import="test" data-how="replace">テストの欄を置きかえる</button>
+            <button type="button" class="btn small ghost" data-ai-import="test" data-how="append">後ろに追加する</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="block loilo-block" data-for="test">
+        <h2><span class="num">L</span>ロイロのテストカードに取り込む</h2>
+        <p class="help">ロイロノートのテストカードで「インポート」すると、問題がまとめて作られます（自動採点つき）。ファイル名がカードのタイトルになります。</p>
+        <div class="row-2">
+          <div class="field">
+            <label for="testPoints">1問の配点</label>
+            <input id="testPoints" type="number" min="0" max="100" data-bind="test.points" data-num>
+          </div>
+          <div class="field end">
+            <label class="inline-check"><input type="checkbox" data-bind="test.required"> 回答を必須にする</label>
+          </div>
+        </div>
+        <button type="button" class="btn loilo wide-btn" data-loilo="test">取り込み用Excelを保存（.xlsx）</button>
+        <details class="loilo-preview" open>
+          <summary>取り込まれる内容を確認</summary>
+          <div class="table-wrap"><table id="loiloTableTest"></table></div>
+        </details>
+      </section>
+
+
+      <!-- ポートフォリオ -->
+      <section class="block" data-for="portfolio">
+        <h2><span class="num">1</span>名簿（あると自動で振り分け）</h2>
+        <textarea id="pfRoster" rows="5" placeholder="1 山田 太郎&#10;2 佐藤 花子&#10;（番号はなくてもOK）"></textarea>
+        <p class="help">1行に1人。名前がファイル名やフォルダ名にふくまれていると、その子に自動で振り分けます。<br><b>名簿と画像はこのブラウザの中だけで使い、保存も送信もしません</b>（ページを閉じると消えます）。</p>
+      </section>
+
+      <section class="block" data-for="portfolio">
+        <h2><span class="num">2</span>提出物の画像を読み込む</h2>
+        <div class="field">
+          <label for="pfUnit">単元名（今から読み込む画像につける）</label>
+          <input id="pfUnit" type="text" placeholder="例：ごんぎつね（空欄ならフォルダ名を使う）">
+        </div>
+        <div class="field">
+          <span class="field-label">名前の決め方</span>
+          <div class="seg" data-key="portfolio.nameRule">
+            <button type="button" data-v="roster">名簿と照合</button>
+            <button type="button" data-v="file">ファイル名</button>
+            <button type="button" data-v="folder">フォルダ名</button>
+          </div>
+        </div>
+        <div class="field pdf-opts">
+          <span class="field-label">PDF（クラス全員分が1つになったものなど）のページの割り当て</span>
+          <div class="seg" data-key="portfolio.pdfRule">
+            <button type="button" data-v="order">名簿の順番</button>
+            <button type="button" data-v="none">あとで手で選ぶ</button>
+          </div>
+          <div class="pdf-per">
+            <label for="pfPdfPer">1人あたり</label>
+            <select id="pfPdfPer" data-bind="portfolio.pdfPer" data-num>
+              <option>1</option><option>2</option><option>3</option><option>4</option>
+            </select>
+            <span>ページ</span>
+          </div>
+          <label class="inline-check"><input type="checkbox" data-bind="portfolio.pdfCrop"> カードの部分だけを切り出す（名前の書かれた余白をのぞく）</label>
+          <p class="help">名簿の順番：名簿の上から順に、1人あたりのページ数ずつ割り当てます。欠席などで順番がずれたときは、5の表で直せます。<br>ファイル名・フォルダ名に名簿の名前が入っているPDFは、PDF全体をその子に割り当てます（名前の決め方が「ファイル名」「フォルダ名」のときも、PDF全体を1人分として扱います）。<br>※切り出しの設定は、このあと読み込むPDFから使われます。</p>
+        </div>
+        <div id="pfDrop" class="drop-zone">
+          <p>ここに画像・PDF・フォルダをドラッグ</p>
+          <div class="drop-buttons">
+            <button type="button" class="btn small" id="pfPickFiles">画像・PDFを選ぶ</button>
+            <button type="button" class="btn small" id="pfPickFolder">フォルダを選ぶ</button>
+          </div>
+          <input type="file" id="pfFiles" accept="image/*,application/pdf,.pdf" multiple hidden>
+          <input type="file" id="pfFolder" webkitdirectory multiple hidden>
+        </div>
+        <p id="pfStatus" class="help"></p>
+        <div class="pf-links">
+          <button type="button" class="link-btn" id="pfReassign">名前を振り直す</button>
+          <button type="button" class="link-btn" id="pfClearAll">読み込んだ画像をすべて消す</button>
+        </div>
+      </section>
+
+      <section class="block" data-for="portfolio">
+        <h2><span class="num">3</span>まとめ方</h2>
+        <div class="field">
+          <span class="field-label">ならべ方</span>
+          <div class="seg" data-key="portfolio.group">
+            <button type="button" data-v="child">子ども別</button>
+            <button type="button" data-v="unit">単元別</button>
+          </div>
+        </div>
+        <div class="row-2">
+          <div class="field">
+            <span class="field-label">用紙</span>
+            <div class="seg" data-key="portfolio.paper">
+              <button type="button" data-v="a4p">A4たて</button>
+              <button type="button" data-v="a4l">A4横</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="pfPer">1ページの枚数</label>
+            <select id="pfPer" data-bind="portfolio.perPage" data-num>
+              <option>1</option><option>2</option><option>4</option><option>6</option>
+            </select>
+          </div>
+        </div>
+        <div class="row-2">
+          <div class="field">
+            <label for="pfTitle">タイトル</label>
+            <input id="pfTitle" type="text" data-bind="portfolio.title" placeholder="例：2学期 学習評価資料">
+          </div>
+          <div class="field">
+            <label for="pfKlass">学級</label>
+            <input id="pfKlass" type="text" data-bind="portfolio.klass" placeholder="例：3年1組">
+          </div>
+        </div>
+        <div class="field">
+          <label for="pfKanten">評価の観点（「,」か「、」で区切る）</label>
+          <input id="pfKanten" type="text" data-bind="portfolio.kanten" placeholder="知識・技能,思考・判断・表現,主体的に学習に取り組む態度">
+        </div>
+        <div class="checks checks-col">
+          <label><input type="checkbox" data-bind="portfolio.sheet"> 評価の表をつける<small>子ども別：単元×観点の評価シート／単元別：名簿×観点の評価一覧（未提出がわかる）</small></label>
+          <label><input type="checkbox" data-bind="portfolio.memo"> 提出物ごとに評価メモ欄</label>
+          <label><input type="checkbox" data-bind="portfolio.abc"> 記入欄に「A B C」を印刷（丸をつける用）</label>
+          <label><input type="checkbox" data-bind="portfolio.confidential"> 「取扱注意」を表示</label>
+          <label><input type="checkbox" data-bind="portfolio.showDate"> ファイルの日付を入れる</label>
+        </div>
+      </section>
+
+      <section class="block" data-for="portfolio">
+        <h2><span class="num">4</span>単元のならび順</h2>
+        <ol id="pfUnits" class="pf-units"></ol>
+      </section>
+
+      <section class="block" data-for="portfolio">
+        <h2><span class="num">5</span>読み込んだ画像<span class="count-note" id="pfItemCount"></span></h2>
+        <p class="help">単元や名前がちがうときは、ここで直せます。</p>
+        <div class="table-wrap pf-table-wrap"><table id="pfTable"></table></div>
+        <datalist id="pfUnitList"></datalist>
+      </section>
+
+      <!-- 共通 -->
+      <section class="block" data-not-for="portfolio">
+        <h2><span class="num" id="lookNum">3</span>見た目</h2>
+        <div class="field">
+          <span class="field-label">カードの形</span>
+          <div class="seg" data-key="aspect">
+            <button type="button" data-v="16:9">横 16:9</button>
+            <button type="button" data-v="4:3">横 4:3</button>
+            <button type="button" data-v="3:4">たて 3:4</button>
+          </div>
+        </div>
+        <div class="field">
+          <span class="field-label">色</span>
+          <div class="seg" data-key="theme">
+            <button type="button" data-v="color">カラー</button>
+            <button type="button" data-v="mono">白黒（印刷向け）</button>
+          </div>
+        </div>
+        <div class="field">
+          <span class="field-label">文字の大きさ</span>
+          <div class="seg" data-key="size">
+            <button type="button" data-v="s">小</button>
+            <button type="button" data-v="m">中</button>
+            <button type="button" data-v="l">大（低学年）</button>
+          </div>
+        </div>
+        <div class="checks">
+          <label><input type="checkbox" data-bind="showName"> 名前の欄</label>
+          <label><input type="checkbox" data-bind="showDate"> 日付の欄</label>
+          <label><input type="checkbox" data-bind="ruled"> 書く欄に罫線</label>
+        </div>
+      </section>
+    </aside>
+
+    <section class="stage" data-for="portfolio">
+      <div class="stage-head">
+        <span id="pfPageCount" class="page-count"></span>
+        <div class="actions">
+          <button type="button" id="pfPdf" class="btn primary">PDFで保存</button>
+          <button type="button" id="pfZip" class="btn">子どもごとのPDF（ZIP）</button>
+          <button type="button" id="pfPrint" class="btn ghost">印刷</button>
+        </div>
+      </div>
+      <div class="preview-wrap">
+        <div id="pfPreview" class="pf-preview"></div>
+      </div>
+      <details class="howto">
+        <summary>使い方</summary>
+        <ul>
+          <li>ロイロノートの提出箱などから、子どもの提出物を<b>画像（PNG・JPG）またはPDF</b>として書き出して保存します。</li>
+          <li><b>クラス全員分が1つのPDF</b>になっている場合は、名簿を入れてから読み込むと、名簿の順番で一人ひとりに割り当てます。</li>
+          <li>単元ごとにフォルダを分けておくと、フォルダ名が単元名になります。単元名を入力してから読み込んでもOKです。</li>
+          <li>名簿を貼り付けておくと、ファイル名・フォルダ名にふくまれる名前で子どもを自動で振り分けます。</li>
+          <li><b>子ども別</b>：最初のページが評価シート（単元×観点の表と所見メモ欄）になり、そのあとに提出物がならびます。所見を書くときや懇談会の準備に使えます。</li>
+          <li><b>単元別</b>：最初のページが評価一覧（名簿×観点の表）になり、未提出の子が赤字でわかります。そのあとにクラス全員の提出物がならびます。</li>
+          <li>PDFはタブレットのペンで書き込んだり、印刷して手書きしたりして使えます。「子どもごとのPDF（ZIP）」で一人1ファイルに分けることもできます。</li>
+          <li>評価にかかわる資料なので、保存先や印刷物の扱いには気をつけてください。</li>
+        </ul>
+      </details>
+    </section>
+
+    <section class="stage" data-not-for="portfolio">
+      <div class="stage-head">
+        <span id="pageCount" class="page-count"></span>
+        <div class="actions">
+          <button type="button" id="btnPdf" class="btn primary">PDFで保存</button>
+          <button type="button" id="btnSave" class="btn">画像で保存（PNG）</button>
+          <button type="button" id="btnCopy" class="btn">画像をコピー</button>
+          <button type="button" id="btnShare" class="btn" hidden>共有・写真に保存</button>
+          <button type="button" id="btnPrint" class="btn ghost">印刷</button>
+        </div>
+      </div>
+      <div class="preview-wrap">
+        <div id="preview" class="preview" aria-label="プレビュー"></div>
+      </div>
+      <details class="howto">
+        <summary>ロイロノートへの取り込み方</summary>
+        <ul>
+          <li><b>PDFで保存</b>：PDFをロイロノートに読み込むと、1ページが1枚のカードになります。カードが何枚あっても一度で取り込めます。</li>
+          <li><b>パソコン・Chromebook</b>：「画像をコピー」してロイロノートの画面に貼り付けるか、保存したファイルをロイロノートの画面へドラッグします。</li>
+          <li><b>iPad</b>：「共有・写真に保存」で写真に保存し、ロイロノートの「写真」から読み込みます。</li>
+          <li>カードが複数あるときは、プレビューの各カードの下にあるボタンで1枚ずつ保存・コピーもできます。</li>
+        </ul>
+      </details>
+    </section>
+  </main>
+
+  <div id="pfPrintArea" class="pf-print-area"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="tools.js"></script>
+  <script src="tools-extra.js"></script>
+  <script src="cards.js"></script>
+  <script src="export.js"></script>
+  <script src="loilo-xlsx.js"></script>
+  <script src="ai.js"></script>
+  <script src="portfolio.js"></script>
+  <script src="pf-ui.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
